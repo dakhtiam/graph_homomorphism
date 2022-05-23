@@ -2,3 +2,5 @@
 data/
 # ignoring folder dataset
 dataset/
+# Ignore the experiments folder
+Experiments/
