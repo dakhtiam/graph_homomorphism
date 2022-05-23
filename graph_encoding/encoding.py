@@ -1,10 +1,10 @@
-######
+"""
+A mini-library to process graphs
+"""
 # imports
 import torch
 from torch_geometric.data import Data
-from torch_geometric.transforms import BaseTransform
 import torch_geometric.utils as uts
-from torch_geometric.utils import remove_self_loops, to_undirected
 
 import numpy as np
 import networkx as nx
@@ -219,4 +219,4 @@ class grandEmbedding(Embedding):
 
 
 if __name__ == "__main__":
-    print("Hello world")
+    print("Graph embedding")

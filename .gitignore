@@ -4,3 +4,5 @@ data/
 dataset/
 # Ignore the experiments folder
 Experiments/
+# Ignore pycache
+__pycache__/
