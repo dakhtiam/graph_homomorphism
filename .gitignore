@@ -6,3 +6,11 @@ dataset/
 Experiments/
 # Ignore pycache
 __pycache__/
+# ignore all pychaches
+**/__pycache__/
+# try pychache again
+**/__pychache__/**
+# ignore pycache
+graph_encoding/__pycache__/
+# attempt ignoring pycache
+*/__pycache__/

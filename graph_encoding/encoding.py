@@ -13,7 +13,7 @@ from grandiso import find_motifs
 import itertools
 import functools
 
-####### testgraph class ##########
+####### testgraph and testset classes ##########
 
 
 class testGraph:
@@ -52,12 +52,34 @@ class testGraph:
             return None
         return nx.draw(self.nx_graph())
 
-####### generic Embedding class ##########
+
+class testGraphSet:
+    def __init__(self, n_cycles=3, n_trees=6, n_cliques=2, *kwargs):
+        self.n_cycles = n_cycles
+        self.n_trees = n_trees
+        self.n_cycles = n_cliques
+
+    def cycles(self):
+        pass
+
+    def list(self):
+        '''
+        Returns the set of testgraphs as a list of testGraph objects
+        '''
+        pass
+
+    def gen(self):
+        '''
+        Returns a generator of testGraph objects over the test graphs
+        '''
+        pass
+
+####### generic Embedding classes ##########
 
 
 class Embedding():
     '''
-    A class for for handeling the embeddings from subgraph isomorphism. 
+    A parent class for for handeling the embeddings from subgraph isomorphism. 
     A specific class using aparticular graph homomorphism computation algorithm or library 
     inherits this class
     '''
@@ -219,4 +241,5 @@ class grandEmbedding(Embedding):
 
 
 if __name__ == "__main__":
-    print("Graph embedding")
+    import doctest
+    doctest.testmod()
