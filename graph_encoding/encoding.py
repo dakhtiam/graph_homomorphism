@@ -10,6 +10,7 @@ import numpy as np
 import networkx as nx
 from grandiso import find_motifs
 
+from typing import Set
 import itertools
 import functools
 
@@ -53,26 +54,9 @@ class testGraph:
         return nx.draw(self.nx_graph())
 
 
-class testGraphSet:
-    def __init__(self, n_cycles=3, n_trees=6, n_cliques=2, *kwargs):
-        self.n_cycles = n_cycles
-        self.n_trees = n_trees
-        self.n_cycles = n_cliques
+# make a type alias for a set of test graphs:
+testGraphSet = Set[testGraph]
 
-    def cycles(self):
-        pass
-
-    def list(self):
-        '''
-        Returns the set of testgraphs as a list of testGraph objects
-        '''
-        pass
-
-    def gen(self):
-        '''
-        Returns a generator of testGraph objects over the test graphs
-        '''
-        pass
 
 ####### generic Embedding classes ##########
 
@@ -85,17 +69,14 @@ class Embedding():
     '''
 
     def __init__(self, graph,
-                 testgraphs=None,
-                 symmetry=True,
+                 testgraphs: testGraphSet = {},
+                 symmetry=False,
                  induced=False,
                  undirected='True',
                  format='Torch'):
         self.__graph = graph
         self.graph = self.__graph
-        if testgraphs == None:
-            self.testgraphs = {}
-        else:
-            self.testgraphs = testgraphs
+        self.testgraphs = testgraphs
         self.symmetry = symmetry
         self.induced = induced
         self.undirected = undirected
@@ -133,7 +114,7 @@ class Embedding():
          parameters:
          test_graph (testGraph) : graph to be added
         '''
-        self.testgraphs[test_graph.name] = test_graph
+        self.testgraphs.add(test_graph)
 
     def add_from_iter(self, testgraphs):
         '''
@@ -141,8 +122,14 @@ class Embedding():
          parameters:
          testgraphs (testGraph) : iterator of graphs to be added
         '''
-        dict_new_testgraphs = {F.name: F for F in testgraphs}
-        self.testgraphs.update(dict_new_testgraphs)
+        new_testgraphs = set(testgraphs)
+        self.testgraphs.update(new_testgraphs)
+
+    def discard_testgraph(self, test_graph):
+        self.testgraphs.discard(test_graph)
+
+    def clear_all_testgraphs(self):
+        self.testgraphs.clear()
 
     def subIso(self, testgraph):
         raise NotImplementedError
@@ -156,7 +143,7 @@ class Embedding():
         '''
         raise NotImplementedError
 
-    def __pullback(self, testgraph, embedding,  format='Torch'):
+    def pullback(self, testgraph, embedding,  format='Torch'):
         # returns the testgraph with features pulled back from the target graph along a map embedding
         '''
         input:
@@ -173,22 +160,17 @@ class grandEmbedding(Embedding):
     A class for for handeling the embeddings from subgraph isomorphism. 
     '''
 
-    def __init__(self, *kwargs):
-        super().__init__(*kwargs)
+    def __init__(self, graph: Data, *kwargs):
+        super().__init__(graph, *kwargs)
 
     def subIso(self, testgraph):
         '''
         params:
         testgraph (testgraph): a testgraph to map from
-        returns:
-        returns a list of monomorphisms of the form
-        "testgraph_id": "graph_id"
+        returns: an itertable of monomorphisms from self to testgraph
         '''
         graph = super(grandEmbedding, self).nx_graph()
         return iter(find_motifs(testgraph.nx_graph(), graph, limit=testgraph.bound))
-    # def subIso(self, testgraph):
-        # a public version of subIso, might be revoked in the future
-        # return self.subIso(testgraph)
 
     def num_encoder(self, format='Torch'):
         '''
@@ -196,19 +178,17 @@ class grandEmbedding(Embedding):
         '''
         graph = super(grandEmbedding, self).nx_graph()
 
-        def num_auto(x): return find_motifs(
-            x.nx_graph(), x.nx_graph(), limit=x.bound, count_only=True)
         def num_all_subisos(x): return find_motifs(
             x.nx_graph(), graph, limit=x.bound, count_only=True)
 
         if format == 'Torch':
-            return torch.tensor([num_all_subisos(test) for test in self.testgraphs.values()])
+            return torch.tensor([num_all_subisos(test) for test in self.testgraphs])
         elif format == 'numpy':
-            return np.array([num_all_subisos(test) for test in self.testgraphs.values()])
+            return np.array([num_all_subisos(test) for test in self.testgraphs])
         else:
-            raise Exception("Format not supported")
+            raise NotImplementedError("Format not supported")
 
-    def ghc_agg(self, test):
+    def __ghc_agg(self, test):
         dict_indices = map(lambda x: x.values(), self.subIso(test))
         indices = map(lambda x: list(x), dict_indices)
 
@@ -225,11 +205,28 @@ class grandEmbedding(Embedding):
     def ghc_encoder(self, format='Torch'):
         '''
         An encoder in the style of the GHC paper
+        returns: a concatanated tensor (or ndarray) multiplying coordinate functions of node featurs
+        $ \sum_{f\in hom(F, self.graph)} \prod_{i\in V(F)} x_(f(i)) $
+        for all F in testgraphset
         '''
         if self.graph.num_node_features == 0:
             return self.num_encoder(format=format)
         embedding_tensor = torch.stack(
-            [self.ghc_agg(test) for test in self.testgraphs.values()])
+            [self.__ghc_agg(test) for test in self.testgraphs])
+
+        embedding_vector = embedding_tensor.flatten()
+        if format == 'Torch':
+            return embedding_vector
+        elif format == 'numpy':
+            return embedding_vector.detach().numpy()
+        else:
+            raise NotImplementedError("Format not supperted")
+
+    def encoder(self, agg, format='Torch'):
+        if self.graph.num_node_features == 0:
+            return self.num_encoder(format=format)
+        embedding_tensor = torch.stack(
+            [self.__ghc_agg(test) for test in self.testgraphs])
 
         embedding_vector = embedding_tensor.flatten()
         if format == 'Torch':
@@ -243,3 +240,6 @@ class grandEmbedding(Embedding):
 if __name__ == "__main__":
     import doctest
     doctest.testmod()
+
+    graph = uts.from_networkx(nx.cycle_graph(2))
+    embd = grandEmbedding(graph)
