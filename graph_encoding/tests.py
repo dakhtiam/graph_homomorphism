@@ -22,12 +22,18 @@ class TestclassEmbedding(unittest.TestCase):
 
 class TestclassgrandEmbedding(TestclassEmbedding):
     def setUp(self):
-        self.g = nx.cycle_graph(2)
+        self.g = nx.cycle_graph(4)
         self.graph = uts.from_networkx(self.g)
         self.gembed = encoding.grandEmbedding(self.graph)
 
     def test_init(self):
-        self.assertEqual(self.gembed.nx_graph().graph, self.g.graph)
+        self.assertEqual(self.gembed.nx_graph().edges, self.g.edges)
+
+    def test_add_cycles(self):
+        self.gembed.add_cycles()
+        test_cycles = [encoding.testGraph(nx.cycle_graph(
+            n), graph_name=f'c_{n}', limit=None) for n in range(3, 6)]
+        self.assertEqual(self.gembed.testgraphs, set(test_cycles))
 
 
 if __name__ == "__main__":

@@ -26,17 +26,37 @@ class testGraph:
         '''
          Parameters:
          graph: a graph in the format "format" (default is networkX)
-         graph_name (String): the name of a graph 
-         max_n (Int): a bound for the number of subgraphs taken
+         graph_name (String): the name of a graph
+         max_n (Int): a limit for the number of subgraphs taken
         '''
         self.name = graph_name
         self.__graph = graph
-        self.bound = limit
+        self.limit = limit
         self.format = format
+
+    def __eq__(self, other):
+        '''
+        overriding dafault __eq__ because networkx hashes the same graph differently
+        '''
+        if self.name != other.name:
+            return False
+        if set(self.nx_graph().edges) != set(other.nx_graph().edges):
+            return False
+        if self.limit != other.limit:
+            return False
+        return True
+
+    def __hash__(self) -> int:
+        '''
+        Implementing __hash__ since __eq__ is overriden
+        '''
+        return hash(self.name)  # hashing by name
+        # return hash((self.name, self.limit))  # hashing by name and size
+        # return hash((self.name, frozenset(self.nx_graph().edges), self.limit))
 
     def nx_graph(self):
         '''
-         returns the graph in networkX format
+        returns the graph in networkX format
         '''
         return self.__graph
 
@@ -47,7 +67,7 @@ class testGraph:
 
     def draw(self):
         '''
-         returns a drawing of the graph
+        returns a drawing of the graph
         '''
         if self.format != 'networkx':
             return None
@@ -69,7 +89,7 @@ class Embedding():
     '''
 
     def __init__(self, graph,
-                 testgraphs: testGraphSet = {},
+                 testgraphs: testGraphSet = set(),
                  symmetry=False,
                  induced=False,
                  undirected='True',
@@ -116,13 +136,12 @@ class Embedding():
         '''
         self.testgraphs.add(test_graph)
 
-    def add_from_iter(self, testgraphs):
+    def add_from_iter(self, new_testgraphs):
         '''
          Adds graphs from an iterrable (e.g. list) to the set of test graphs
          parameters:
          testgraphs (testGraph) : iterator of graphs to be added
         '''
-        new_testgraphs = set(testgraphs)
         self.testgraphs.update(new_testgraphs)
 
     def discard_testgraph(self, test_graph):
@@ -130,6 +149,32 @@ class Embedding():
 
     def clear_all_testgraphs(self):
         self.testgraphs.clear()
+
+    def add_trees(self, start=2, stop=6, limit=None):
+        '''
+        Adding a set of all non-isomorphic trees of sizes [start, stop] to the testgraph set
+        '''
+        def make_tree(tree, n, m): return testGraph(
+            tree, graph_name=f'tree of size {n}, number {m}', limit=limit)
+        def make_non_is_trees(n): return [make_tree(
+            tree, n, m) for m, tree in enumerate(list(nx.nonisomorphic_trees(n)))]
+        test_trees = list(itertools.chain.from_iterable(
+            [make_non_is_trees(n) for n in range(start, stop)]))
+
+        self.add_from_iter(test_trees)
+
+    def add_cycles(self, start=3, stop=6, limit=None):
+        '''
+        Adding a set cycles of length [start, stop] to the testgraph set
+        '''
+        test_cycles = [testGraph(nx.cycle_graph(
+            n), graph_name=f'c_{n}', limit=limit) for n in range(3, 6)]
+        self.add_from_iter(test_cycles)
+
+    def add_cliques(self, limit=None):
+        test_cliques = [testGraph(nx.complete_graph(
+            n), graph_name=f'K_{n}', limit=limit) for n in range(4, 6)]
+        self.add_from_iter(test_cliques)
 
     def subIso(self, testgraph):
         raise NotImplementedError
@@ -170,7 +215,7 @@ class grandEmbedding(Embedding):
         returns: an itertable of monomorphisms from self to testgraph
         '''
         graph = super(grandEmbedding, self).nx_graph()
-        return iter(find_motifs(testgraph.nx_graph(), graph, limit=testgraph.bound))
+        return iter(find_motifs(testgraph.nx_graph(), graph, limit=testgraph.limit))
 
     def num_encoder(self, format='Torch'):
         '''
@@ -179,7 +224,7 @@ class grandEmbedding(Embedding):
         graph = super(grandEmbedding, self).nx_graph()
 
         def num_all_subisos(x): return find_motifs(
-            x.nx_graph(), graph, limit=x.bound, count_only=True)
+            x.nx_graph(), graph, limit=x.limit, count_only=True)
 
         if format == 'Torch':
             return torch.tensor([num_all_subisos(test) for test in self.testgraphs])

@@ -8,5 +8,5 @@ Experiments/
 __pycache__/
 # ignore all pychaches
 **/__pycache__/
-# ignore pycache
+# ignore pycache of graph_encoding library
 graph_encoding/__pycache__/
