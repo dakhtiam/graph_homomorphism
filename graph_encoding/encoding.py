@@ -2,6 +2,7 @@
 A mini-library to process graphs
 """
 # imports
+import string
 import torch
 from torch_geometric.data import Data
 import torch_geometric.utils as uts
@@ -22,7 +23,7 @@ class testGraph:
     A class object for a test graph with descriptive features
     '''
 
-    def __init__(self, graph, graph_name=None, limit=None, format='networkx'):
+    def __init__(self, graph, graph_name: string, limit=None, format='networkx'):
         '''
          Parameters:
          graph: a graph in the format "format" (default is networkX)
@@ -34,7 +35,7 @@ class testGraph:
         self.limit = limit
         self.format = format
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         '''
         overriding dafault __eq__ because networkx hashes the same graph differently
         '''
@@ -53,6 +54,9 @@ class testGraph:
         return hash(self.name)  # hashing by name
         # return hash((self.name, self.limit))  # hashing by name and size
         # return hash((self.name, frozenset(self.nx_graph().edges), self.limit))
+
+    def __str__(self) -> string:
+        return self.name
 
     def nx_graph(self):
         '''
@@ -150,6 +154,12 @@ class Embedding():
     def clear_all_testgraphs(self):
         self.testgraphs.clear()
 
+    def add_single_vertex(self, limit=None):
+        single_vertex = testGraph(
+            nx.complete_graph(1), graph_name='single_vertex', limit=limit)
+
+        self.add(single_vertex)
+
     def add_trees(self, start=2, stop=6, limit=None):
         '''
         Adding a set of all non-isomorphic trees of sizes [start, stop] to the testgraph set
@@ -233,6 +243,20 @@ class grandEmbedding(Embedding):
         else:
             raise NotImplementedError("Format not supported")
 
+    def __encoder(self, agg, format='Torch'):
+        if self.graph.num_node_features == 0:
+            return self.num_encoder(format=format)
+        embedding_tensor = torch.stack(
+            [agg(test) for test in self.testgraphs])
+
+        embedding_vector = embedding_tensor.flatten()
+        if format == 'Torch':
+            return embedding_vector
+        elif format == 'numpy':
+            return embedding_vector.detach().numpy()
+        else:
+            raise NotImplementedError("Format not supperted")
+
     def __ghc_agg(self, test):
         dict_indices = map(lambda x: x.values(), self.subIso(test))
         indices = map(lambda x: list(x), dict_indices)
@@ -254,32 +278,10 @@ class grandEmbedding(Embedding):
         $ \sum_{f\in hom(F, self.graph)} \prod_{i\in V(F)} x_(f(i)) $
         for all F in testgraphset
         '''
-        if self.graph.num_node_features == 0:
-            return self.num_encoder(format=format)
-        embedding_tensor = torch.stack(
-            [self.__ghc_agg(test) for test in self.testgraphs])
+        return self.__encoder(self.__ghc_agg, format=format)
 
-        embedding_vector = embedding_tensor.flatten()
-        if format == 'Torch':
-            return embedding_vector
-        elif format == 'numpy':
-            return embedding_vector.detach().numpy()
-        else:
-            raise NotImplementedError("Format not supperted")
-
-    def encoder(self, agg, format='Torch'):
-        if self.graph.num_node_features == 0:
-            return self.num_encoder(format=format)
-        embedding_tensor = torch.stack(
-            [self.__ghc_agg(test) for test in self.testgraphs])
-
-        embedding_vector = embedding_tensor.flatten()
-        if format == 'Torch':
-            return embedding_vector
-        elif format == 'numpy':
-            return embedding_vector.detach().numpy()
-        else:
-            raise NotImplementedError("Format not supperted")
+    def __lagrangian_agg(self, test):
+        pass
 
 
 if __name__ == "__main__":
