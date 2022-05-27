@@ -13,7 +13,7 @@ from grandiso import find_motifs
 
 from typing import Set
 import itertools
-import functools
+from functools import partial
 
 ####### testgraph and testset classes ##########
 
@@ -178,12 +178,12 @@ class Embedding():
         Adding a set cycles of length [start, stop] to the testgraph set
         '''
         test_cycles = [testGraph(nx.cycle_graph(
-            n), graph_name=f'c_{n}', limit=limit) for n in range(3, 6)]
+            n), graph_name=f'c_{n}', limit=limit) for n in range(start, stop)]
         self.add_from_iter(test_cycles)
 
-    def add_cliques(self, limit=None):
+    def add_cliques(self, start=4, stop=6, limit=None):
         test_cliques = [testGraph(nx.complete_graph(
-            n), graph_name=f'K_{n}', limit=limit) for n in range(4, 6)]
+            n), graph_name=f'K_{n}', limit=limit) for n in range(start, stop)]
         self.add_from_iter(test_cliques)
 
     def subIso(self, testgraph):
@@ -247,7 +247,7 @@ class grandEmbedding(Embedding):
         if self.graph.num_node_features == 0:
             return self.num_encoder(format=format)
         embedding_tensor = torch.stack(
-            [agg(test) for test in self.testgraphs])
+            [agg(test) for test in self.testgraphs], dim=0)
 
         embedding_vector = embedding_tensor.flatten()
         if format == 'Torch':
@@ -258,6 +258,9 @@ class grandEmbedding(Embedding):
             raise NotImplementedError("Format not supperted")
 
     def __ghc_agg(self, test):
+        '''
+        The local aggregation function for ghc_encoder
+        '''
         dict_indices = map(lambda x: x.values(), self.subIso(test))
         indices = map(lambda x: list(x), dict_indices)
 
@@ -267,7 +270,24 @@ class grandEmbedding(Embedding):
             num_node_features = self.graph.num_node_features
             return torch.zeros(num_node_features)
 
-        test_agg = torch.stack(tensorlist)
+        test_agg = torch.stack(tensorlist, dim=0)
+
+        return torch.sum(test_agg, dim=0)
+
+    def ghc_agg(self, test):
+        '''
+        The local aggregation function for ghc_encoder
+        '''
+        dict_indices = map(lambda x: x.values(), self.subIso(test))
+        indices = map(lambda x: list(x), dict_indices)
+
+        tensorlist = [torch.prod(self.graph.x[idx], dim=0) for idx in indices]
+
+        if len(tensorlist) == 0:
+            num_node_features = self.graph.num_node_features
+            return torch.zeros(num_node_features)
+
+        test_agg = torch.stack(tensorlist, dim=0)
 
         return torch.sum(test_agg, dim=0)
 
@@ -275,18 +295,77 @@ class grandEmbedding(Embedding):
         '''
         An encoder in the style of the GHC paper
         returns: a concatanated tensor (or ndarray) multiplying coordinate functions of node featurs
-        $ \sum_{f\in hom(F, self.graph)} \prod_{i\in V(F)} x_(f(i)) $
-        for all F in testgraphset
+        $ \sum_{f\in hom(F, self.graph)} \oplus_{k=1..d}\prod_{i\in V(F)} x^k_(f(i)) $
+        for F in testgraphset and d the dimension of node features
         '''
         return self.__encoder(self.__ghc_agg, format=format)
 
-    def __lagrangian_agg(self, test):
+    def __lagrangian_agg(self, test: testGraph):
+        '''
+        Local aggregation for Lagrangian encoder
+        '''
+        if test.name == 'single_vertex':
+            return self.__ghc_agg(test)
+        dict_indices = self.subIso(test)
+        test_edge_list = test.pyg_graph().edge_index.t()
+
+        test_edge_list = [test_edge_list.clone().apply_(
+            lambda x: dict[x]) for dict in dict_indices]
+        if len(test_edge_list) == 0:
+            num_node_features = self.graph.num_node_features
+            return torch.zeros(num_node_features)
+
+        test_edge_tensor = torch.stack(test_edge_list)
+        x_edge_pair = self.graph.x[test_edge_tensor]
+
+        x_edge_product = torch.prod(x_edge_pair, dim=-2)
+        test_agg = torch.sum(x_edge_product, dim=-2)
+
+        return torch.div(torch.sum(test_agg, dim=0), 2)
+
+    def lagrangian_encoder(self, format='Torch'):
+        '''
+        An encdoer with local augmentation given by lagrangian functions:
+        $ \sum_{f\in hom(F, self.graph)} \oplus_{k = 1..d}\sum_{(i,j)\in E(F)} x^k_(f(i))x^k_(f(j)) $
+        for F in testgraphset and d the dimension of node features
+        '''
+        return self.__encoder(self.__lagrangian_agg, format=format)
+
+    def __sum_ghc_agg(self, test):
+        '''
+        The local aggregation function for ghc_encoder
+        '''
+        dict_indices = map(lambda x: x.values(), self.subIso(test))
+        indices = map(lambda x: list(x), dict_indices)
+
+        tensorlist = [torch.prod(
+            torch.sum(self.graph.x[idx], dim=1), dim=0) for idx in indices]
+
+        if len(tensorlist) == 0:
+            num_node_features = self.graph.num_node_features
+            return torch.zeros(num_node_features)
+
+        test_agg = torch.stack(tensorlist)
+
+        return torch.sum(test_agg, dim=0)
+
+    def sum_ghc_encoder(self, format='Torch'):
+        '''
+        An encoder summing all elements of feature vector before applying usual GHC encoding.
+        returns: a concatanated tensor (or ndarray) multiplying coordinate functions of node featurs
+        $ \sum_{f\in hom(F, self.graph)} \prod_{i\in V(F)} (\sum_{k=1,d}x^d_(f(i)) $
+        for F in testgraphset and d the dimension of node features
+        '''
+        return self.__encoder(self.__sum_ghc_agg, format=format)
+
+    def __make_aug(self, encoder):
+        '''
+        takes an encoder and makes a new encoder for which every testgraph feature
+        is the original feature appended with the number of testgraphs of this form 
+        '''
         pass
 
 
 if __name__ == "__main__":
     import doctest
     doctest.testmod()
-
-    graph = uts.from_networkx(nx.cycle_graph(2))
-    embd = grandEmbedding(graph)

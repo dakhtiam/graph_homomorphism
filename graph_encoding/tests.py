@@ -38,6 +38,8 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.assertEqual(self.graph.num_node_features, 2)
 
     def test_add_single_vertex(self):
+        self.gembed.clear_all_testgraphs()
+
         single_vertex = encoding.testGraph(
             nx.complete_graph(1), graph_name='single_vertex', limit=None)
 
@@ -47,6 +49,8 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.gembed.clear_all_testgraphs()
 
     def test_add_cycles(self):
+        self.gembed.clear_all_testgraphs()
+
         test_cycles = [encoding.testGraph(nx.cycle_graph(
             n), graph_name=f'c_{n}', limit=None) for n in range(3, 6)]
 
@@ -56,6 +60,8 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.gembed.clear_all_testgraphs()
 
     def test_add_cliques(self):
+        self.gembed.clear_all_testgraphs()
+
         test_cliques = [encoding.testGraph(nx.complete_graph(
             n), graph_name=f'K_{n}', limit=None) for n in range(4, 6)]
 
@@ -65,6 +71,7 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.gembed.clear_all_testgraphs()
 
     def test_add_trees(self):
+        self.gembed.clear_all_testgraphs()
 
         def make_tree(tree, n, m): return encoding.testGraph(
             tree, graph_name=f'tree of size {n}, number {m}', limit=None)
@@ -87,15 +94,48 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.assertListEqual(list(self.gembed.subIso(v)), node_maps)
 
     def test_num_encoding(self):
+        self.gembed.clear_all_testgraphs()
         self.gembed.add_single_vertex()
         self.assertEqual(np.array(5), self.gembed.num_encoder(format='numpy'))
         self.gembed.clear_all_testgraphs()
 
     def test_ghc_encoder(self):
+        self.gembed.clear_all_testgraphs()
         self.gembed.add_single_vertex()
-        expected = self.gembed.ghc_encoder(format='numpy')
+        expected_v = self.gembed.ghc_encoder(format='numpy')
         self.assertTrue(np.array_equal(
-            np.array([5, 2]), expected), msg=f'{expected}')
+            np.array([5, 2]), expected_v), msg=f'{expected_v}')
+        self.gembed.clear_all_testgraphs()
+        self.gembed.add_trees(stop=3)
+        expected_t = self.gembed.ghc_encoder(format='numpy')
+        self.assertTrue(np.array_equal(
+            np.array([20, 2]), expected_t), msg=f'{expected_t}')
+        self.gembed.clear_all_testgraphs()
+
+    def test_lagrangian_encoder(self):
+        self.gembed.clear_all_testgraphs()
+        self.gembed.add_single_vertex()
+        expected_v = self.gembed.lagrangian_encoder(format='numpy')
+        self.assertTrue(np.array_equal(
+            np.array([5, 2]), expected_v), msg=f'{expected_v}')
+        self.gembed.clear_all_testgraphs()
+        self.gembed.add_trees(stop=3)
+        expected_t = self.gembed.lagrangian_encoder(format='numpy')
+        self.assertTrue(np.array_equal(
+            np.array([20, 2]), expected_t), msg=f'{expected_t}')
+        self.gembed.clear_all_testgraphs()
+
+    def test_sum_ghc_encoder(self):
+        self.gembed.clear_all_testgraphs()
+        self.gembed.add_single_vertex()
+        expected_v = self.gembed.sum_ghc_encoder(format='numpy')
+        self.assertTrue(np.array_equal(
+            np.array([7]), expected_v), msg=f'{expected_v}')
+        self.gembed.clear_all_testgraphs()
+        self.gembed.add_trees(stop=3)
+        expected_t = self.gembed.sum_ghc_encoder(format='numpy')
+        self.assertTrue(np.array_equal(
+            np.array([38]), expected_t), msg=f'{expected_t}')
         self.gembed.clear_all_testgraphs()
 
 
