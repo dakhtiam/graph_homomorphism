@@ -10,3 +10,6 @@ __pycache__/
 **/__pycache__/
 # ignore pycache of graph_encoding library
 graph_encoding/__pycache__/
+# ignoring data_local library
+data_local/
+

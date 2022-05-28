@@ -1,5 +1,5 @@
 """
-A mini-library to process graphs
+A mini-library to process graph encoding based on subgraph strcuture
 """
 # imports
 import string
@@ -274,23 +274,6 @@ class grandEmbedding(Embedding):
 
         return torch.sum(test_agg, dim=0)
 
-    def ghc_agg(self, test):
-        '''
-        The local aggregation function for ghc_encoder
-        '''
-        dict_indices = map(lambda x: x.values(), self.subIso(test))
-        indices = map(lambda x: list(x), dict_indices)
-
-        tensorlist = [torch.prod(self.graph.x[idx], dim=0) for idx in indices]
-
-        if len(tensorlist) == 0:
-            num_node_features = self.graph.num_node_features
-            return torch.zeros(num_node_features)
-
-        test_agg = torch.stack(tensorlist, dim=0)
-
-        return torch.sum(test_agg, dim=0)
-
     def ghc_encoder(self, format='Torch'):
         '''
         An encoder in the style of the GHC paper
@@ -307,9 +290,9 @@ class grandEmbedding(Embedding):
         if test.name == 'single_vertex':
             return self.__ghc_agg(test)
         dict_indices = self.subIso(test)
-        test_edge_list = test.pyg_graph().edge_index.t()
+        test_edges = test.pyg_graph().edge_index.t()
 
-        test_edge_list = [test_edge_list.clone().apply_(
+        test_edge_list = [test_edges.clone().apply_(
             lambda x: dict[x]) for dict in dict_indices]
         if len(test_edge_list) == 0:
             num_node_features = self.graph.num_node_features
