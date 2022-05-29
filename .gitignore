@@ -12,4 +12,6 @@ __pycache__/
 graph_encoding/__pycache__/
 # ignoring data_local library
 data_local/
+# ignoring pattern graph data
+pattern_graphs/
 

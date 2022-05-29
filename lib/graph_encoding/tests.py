@@ -1,6 +1,6 @@
 import unittest
 
-import encoding
+from . import encoding
 import networkx as nx
 
 import torch
@@ -63,7 +63,7 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.gembed.clear_all_testgraphs()
 
         test_cliques = [encoding.testGraph(nx.complete_graph(
-            n), graph_name=f'K_{n}', limit=None) for n in range(4, 6)]
+            n), graph_name=f'K_{n}', limit=None) for n in range(4, 5)]
 
         self.gembed.add_cliques()
         self.assertEqual(self.gembed.testgraphs, set(test_cliques))
@@ -123,19 +123,6 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         expected_t = self.gembed.lagrangian_encoder(format='numpy')
         self.assertTrue(np.array_equal(
             np.array([20, 2]), expected_t), msg=f'{expected_t}')
-        self.gembed.clear_all_testgraphs()
-
-    def test_sum_ghc_encoder(self):
-        self.gembed.clear_all_testgraphs()
-        self.gembed.add_single_vertex()
-        expected_v = self.gembed.sum_ghc_encoder(format='numpy')
-        self.assertTrue(np.array_equal(
-            np.array([7]), expected_v), msg=f'{expected_v}')
-        self.gembed.clear_all_testgraphs()
-        self.gembed.add_trees(stop=3)
-        expected_t = self.gembed.sum_ghc_encoder(format='numpy')
-        self.assertTrue(np.array_equal(
-            np.array([38]), expected_t), msg=f'{expected_t}')
         self.gembed.clear_all_testgraphs()
 
 

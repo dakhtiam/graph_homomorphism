@@ -79,6 +79,7 @@ class testGraph:
 
 
 # make a type alias for a set of test graphs:
+
 testGraphSet = Set[testGraph]
 
 
@@ -100,6 +101,8 @@ class Embedding():
                  format='Torch'):
         self.__graph = graph
         self.graph = self.__graph
+        if testgraphs == set():
+            self.testgraphs = set()
         self.testgraphs = testgraphs
         self.symmetry = symmetry
         self.induced = induced
@@ -181,7 +184,7 @@ class Embedding():
             n), graph_name=f'c_{n}', limit=limit) for n in range(start, stop)]
         self.add_from_iter(test_cycles)
 
-    def add_cliques(self, start=4, stop=6, limit=None):
+    def add_cliques(self, start=4, stop=5, limit=None):
         test_cliques = [testGraph(nx.complete_graph(
             n), graph_name=f'K_{n}', limit=limit) for n in range(start, stop)]
         self.add_from_iter(test_cliques)
@@ -314,41 +317,9 @@ class grandEmbedding(Embedding):
         '''
         return self.__encoder(self.__lagrangian_agg, format=format)
 
-    def __sum_ghc_agg(self, test):
-        '''
-        The local aggregation function for ghc_encoder
-        '''
-        dict_indices = map(lambda x: x.values(), self.subIso(test))
-        indices = map(lambda x: list(x), dict_indices)
-
-        tensorlist = [torch.prod(
-            torch.sum(self.graph.x[idx], dim=1), dim=0) for idx in indices]
-
-        if len(tensorlist) == 0:
-            num_node_features = self.graph.num_node_features
-            return torch.zeros(num_node_features)
-
-        test_agg = torch.stack(tensorlist)
-
-        return torch.sum(test_agg, dim=0)
-
-    def sum_ghc_encoder(self, format='Torch'):
-        '''
-        An encoder summing all elements of feature vector before applying usual GHC encoding.
-        returns: a concatanated tensor (or ndarray) multiplying coordinate functions of node featurs
-        $ \sum_{f\in hom(F, self.graph)} \prod_{i\in V(F)} (\sum_{k=1,d}x^d_(f(i)) $
-        for F in testgraphset and d the dimension of node features
-        '''
-        return self.__encoder(self.__sum_ghc_agg, format=format)
-
     def __make_aug(self, encoder):
         '''
         takes an encoder and makes a new encoder for which every testgraph feature
         is the original feature appended with the number of testgraphs of this form 
         '''
         pass
-
-
-if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
