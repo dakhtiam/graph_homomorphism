@@ -2,30 +2,41 @@
 Set up measurements for different pattern graphs
 """
 # imports
+from optparse import Option
 import string
 from tokenize import String
 import numpy as np
-#import torch
-#from torch_geometric.data import Data
-#from torch_geometric.transforms import BaseTransform
-#from torch_geometric.datasets import TUDataset, ZINC
-#from ogb.graphproppred import PygGraphPropPredDataset
+# import torch
+# from torch_geometric.data import Data
+# from torch_geometric.transforms import BaseTransform
+# from torch_geometric.datasets import TUDataset, ZINC
+# from ogb.graphproppred import PygGraphPropPredDataset
 
 import networkx as nx
 from lib.graph_encoding.encoding import grandEmbedding
 
-from typing import Dict
+from typing import Any, Dict, List, Optional
 import itertools
 from functools import partial
 from dataclasses import dataclass
 
-#from tqdm import tqdm
+# imports
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC, SVR
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
-# ogb
-#from ogb.graphproppred import Evaluator
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 
+import matplotlib.pyplot as plt
+
+# from tqdm import tqdm
 
 ###### Setting up the embeding ########
+
+
 class ExperimentEmbedding(grandEmbedding):
     def __init__(self, data):
         super().__init__(data)
@@ -48,16 +59,77 @@ class ExperimentEmbedding(grandEmbedding):
         self.add_cliques(stop=n_cliques, limit=limit_cliques)
 
 
-###### Save processed data ########
+###### data classes for loading data and estimation ########
 
-####### load data ########
-
-######### experiment pipelines #######
 @dataclass
-class Result:
+class ExperimentScore:
+    scores: Any
+    nums: Dict[str, int]
+    clf_name: string
+    cv_num: Optional[int]
+
+    def plot_cv_scores(self):
+        if self.cv_num == None:
+            raise ValueError('No cross-validation number supplied')
+        mean = self.scores.mean()
+        std = self.scores.std()
+        width = 0.35
+        labels = [f'G{n}' for n in range(1, self.cv_num+1)]
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        ax.bar(labels, self.scores, width)
+        ax.set_ylabel('Scores')
+        ax.set_title('Cross validation scores for ' + self.clf_name)
+        plt.axhline(y=mean, c='black', linewidth=0.7,
+                    label=f'Err = {mean:.2f}' + u"\u00B1" + f'{std:.2f}')
+        ax.legend()
+
+        plt.show()
+        print(f'Validation error = {mean:.2f}' +
+              u"\u00B1" + f'{std:.2f}')
+
+
+@dataclass
+class EncodingData:
     X: np.ndarray
     y: np.ndarray
     nums: Dict[str, int]
+
+    def __clf(self, clf_name, cv_num=None, random_state=42):
+        if clf_name == 'SVC':
+            base_clf = SVC(C=1, random_state=random_state)
+        elif clf_name == 'Random_forest':
+            base_clf = RandomForestClassifier(random_state=random_state)
+        else:
+            raise NotImplementedError("Classifier type not supported")
+        return make_pipeline(StandardScaler(), base_clf)
+
+    def calculate_single_split_score(self, clf_name, scoring='accuracy',
+                                     random_state=42, test_size=0.25):
+        # test-train split:
+        X_train, X_test, y_train, y_test = train_test_split(
+            self.X, self.y, test_size=test_size, random_state=random_state)
+
+        # fit data
+        clf = self.__clf(clf_name)
+        clf.fit(X_train, y_train)
+
+        # return  scores
+        train_score = clf.score(X_train, y_train.ravel())
+        test_score = clf.score(X_test, y_test.ravel())
+
+        scores = {'train_score': train_score, 'test_score': test_score}
+
+        return ExperimentScore(scores=scores, nums=self.nums, clf_name=clf_name)
+
+    def calculate_cv_scores(self, clf_name, cv_num, scoring='accuracy'):
+        clf = self.__clf(clf_name)
+        scores = cross_val_score(
+            clf, self.X, self.y.ravel(), cv=cv_num, scoring=scoring)
+
+        return ExperimentScore(scores=scores, nums=self.nums, clf_name=clf_name, cv_num=cv_num)
+
+######### experiment pipelines #######
 
 
 class patternExperiment():
@@ -65,10 +137,14 @@ class patternExperiment():
                  encoder_name, limit_vertex=None,
                  n_trees=2, limit_trees=10000,
                  n_cycles=3, limit_cycles=10000,
-                 n_cliques=4, limit_cliques=100):
+                 n_cliques=4, limit_cliques=100,
+                 loading_mode=False, dataset_name=None):
         self.dataset = dataset
         self.encoded_dataset = None
-        self.dataset_name = f'{dataset}'
+        if loading_mode == True:
+            self.dataset_name = dataset_name
+        else:
+            self.dataset_name = f'{dataset}'
         self.folder_name = folder_name
         self.encoder_name = encoder_name
 
@@ -79,6 +155,12 @@ class patternExperiment():
         self.limit_cycles = limit_cycles
         self.n_cliques = n_cliques
         self.limit_cliques = limit_cliques
+
+        self.__datadict: Dict[int, EncodingData] = {}
+        self.__scorsdict: Dict[int, ExperimentScore] = {}
+
+        self.num_of_experiments = (self.n_cliques-4) * \
+            (self.n_cycles-3)*(self.n_trees - 2)
 
     def __init_dataset(self):
         self.encoded_dataset = [
@@ -124,8 +206,7 @@ class patternExperiment():
         np.save(self.folder_name + '/'+self.encoder_name +
                 '/' + f'{i}_nums.npy', nums, allow_pickle=True)
 
-    def load_data(self):
-        datadict = {}
+    def load_data(self, get_value=False):
         for i in range(self.num_of_experiments):
             X = np.load(self.folder_name + '/' +
                         self.encoder_name+'/' + f'{i}_X.npy')
@@ -133,12 +214,34 @@ class patternExperiment():
                         self.encoder_name+'/' + f'{i}_y.npy')
             nums = np.load(self.folder_name + '/'+self.encoder_name +
                            '/' + f'{i}_nums.npy', allow_pickle=True).item()
-            result = Result(X, y, nums)
-            datadict[i] = result
-        return datadict
+            result = EncodingData(X, y, nums)
+            self.__datadict[i] = result
 
-    def __evaluation(self):
-        pass
+        if get_value == True:
+            return self.__datadict
+
+    def __evaluate_scors(self, clf_name, scoring, cv_num=None, random_state=42):
+        if cv_num == None:
+            def get_score(x): return x.calculate_single_split_score(
+                clf_name, scoring, random_state=random_state)
+        else:
+            def get_score(x): return x.calculate_cv_scores(
+                clf_name, cv_num, scoring)
+
+        for i, data in self.__datadict.items():
+            score_data = get_score(data)
+            self.__scorsdict[i] = score_data
+
+    def __save_score_data(self, i, score_data: ExperimentScore):
+        np.save(self.folder_name + '/'+self.encoder_name +
+                '/' + f'{i}_{score_data.clf_name}_scores.npy', score_data.scores)
+
+    def load_score_data(self, clf_name):
+        score_dict = {}
+        for i in range(self.num_of_experiments):
+            score_dict[i] = np.load(self.folder_name + '/'+self.encoder_name +
+                                    '/' + f'{i}_{clf_name}_scores.npy')
+        return score_dict
 
     def run(self):
         self.__init_dataset()
@@ -156,6 +259,14 @@ class patternExperiment():
                     self.__save_data(i, X, y, nums)
                     i += 1
         self.num_of_experiments = i
+
+    def evaluation(self, clf_name, scoring, cv_num=None, random_state=42):
+        self.load_data()
+        self.__evaluate_scors(
+            clf_name, scoring, cv_num=cv_num, random_state=random_state)
+
+        for i, data in self.__scorsdict.items():
+            self.__save_score_data(i, data)
 
 
 if __name__ == "__main__":
