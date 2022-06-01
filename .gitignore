@@ -16,4 +16,7 @@ data_local/
 pattern_graphs/
 #ignoring old notebooks
 old_notebooks/
+# ignore private notebooks
+pattern_graph_experiment.ipynb
+project_experiments.ipynb
 

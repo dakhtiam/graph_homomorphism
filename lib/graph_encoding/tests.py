@@ -131,30 +131,13 @@ class TestclassgrandEmbedding(TestclassEmbedding):
             np.array([20, 2]), expected_t), msg=f'{expected_t}')
         self.gembed.clear_all_testgraphs()
 
-    def test_tensor_v_encoder(self):
-        self.sm_gembed.clear_all_testgraphs()
-        edge = encoding.testGraph(nx.complete_graph(2), graph_name='edge')
-        self.sm_gembed.add(edge)
-        embedding_list = self.sm_gembed.tensor_v_encoder()
-        embedding_sizes = list(
-            map(lambda x: list(x.size()), embedding_list))
-        self.assertListEqual([[10]], embedding_sizes)
-        self.sm_gembed.clear_all_testgraphs()
-
-        self.sm_gembed.add_single_vertex()
-        self.sm_gembed.add(edge)
-        embedding_list = self.sm_gembed.tensor_v_encoder()
-        embedding_sizes = list(
-            map(lambda x: list(x.size()), embedding_list))
-        #self.assertEqual(14, sum(embedding_sizes))
-        self.sm_gembed.clear_all_testgraphs()
-
     def test_lagrangian_edge_encoder(self):
         self.sm_gembed.clear_all_testgraphs()
         edge = encoding.testGraph(nx.complete_graph(2), graph_name='edge')
         self.sm_gembed.add(edge)
         encoded_vector = self.sm_gembed.lagrangian_edge_encoder(format='numpy')
         self.assertEqual(5, encoded_vector.shape[0])
+        self.sm_gembed.clear_all_testgraphs()
 
 
 if __name__ == "__main__":
