@@ -14,6 +14,7 @@ from grandiso import find_motifs
 from typing import Set
 import itertools
 from functools import partial
+import scipy.special
 
 ####### testgraph and testset classes ##########
 
@@ -69,6 +70,9 @@ class testGraph:
             raise Exception('Not implemented yet')
         return uts.convert.from_networkx(self.__graph)
 
+    def num_nodes(self):
+        return self.nx_graph().number_of_nodes()
+
     def draw(self):
         '''
         returns a drawing of the graph
@@ -88,8 +92,8 @@ testGraphSet = Set[testGraph]
 
 class Embedding():
     '''
-    A parent class for for handeling the embeddings from subgraph isomorphism. 
-    A specific class using aparticular graph homomorphism computation algorithm or library 
+    A parent class for for handeling the embeddings from subgraph isomorphism.
+    A specific class using aparticular graph homomorphism computation algorithm or library
     inherits this class
     '''
 
@@ -205,7 +209,7 @@ class Embedding():
         # returns the testgraph with features pulled back from the target graph along a map embedding
         '''
         input:
-        testgraph (testGraph): a testgraph 
+        testgraph (testGraph): a testgraph
         embedding (gt.vertexpropertymap) :  an embedding of testgraph into the graph
         returns:
         subgraph (torch-geometric.data): testgraph as pyg data with features pulled along embedding
@@ -215,7 +219,7 @@ class Embedding():
 
 class grandEmbedding(Embedding):
     '''
-    A class for for handeling the embeddings from subgraph isomorphism. 
+    A class for for handeling the embeddings from subgraph isomorphism.
     '''
 
     def __init__(self, graph: Data, *kwargs):
@@ -246,17 +250,25 @@ class grandEmbedding(Embedding):
         else:
             raise NotImplementedError("Format not supported")
 
-    def __encoder(self, agg, format='Torch'):
+    def __encoder(self, agg, format='Torch', flatten=True):
         if self.graph.num_node_features == 0:
             return self.num_encoder(format=format)
-        embedding_tensor = torch.stack(
-            [agg(test) for test in self.testgraphs], dim=0)
 
-        embedding_vector = embedding_tensor.flatten()
+        embedding_list = [agg(test) for test in self.testgraphs]
+
+        if len(embedding_list) == 0:
+            raise ValueError('Expecting a non-empty list of testgraphs')
+        if flatten == False:
+            if format != 'Torch':
+                raise NotImplementedError("Format not supperted")
+            return embedding_list
+
+        embedding_tensor = torch.stack(embedding_list, dim=0)
+        embedding_tensor = embedding_tensor.flatten()
         if format == 'Torch':
-            return embedding_vector
+            return embedding_tensor.contiguous()
         elif format == 'numpy':
-            return embedding_vector.detach().numpy()
+            return embedding_tensor.detach().numpy()
         else:
             raise NotImplementedError("Format not supperted")
 
@@ -317,9 +329,97 @@ class grandEmbedding(Embedding):
         '''
         return self.__encoder(self.__lagrangian_agg, format=format)
 
-    def __make_aug(self, encoder):
+    def __lagrangian_edge_agg(self, test):
         '''
-        takes an encoder and makes a new encoder for which every testgraph feature
-        is the original feature appended with the number of testgraphs of this form 
+        Local aggregation for Lagrangian encoder
         '''
+        if test.name == 'single_vertex':
+            return self.__ghc_agg(test)
+
+        def to_str(x): return f'{x}'
+        edge_strings = map(to_str, self.graph.edge_index.t().tolist())
+        edge_dict = dict(map(lambda x: reversed(x), enumerate(edge_strings)))
+        if test.name == 'single_vertex':
+            return self.__ghc_agg(test)
+        dict_indices = self.subIso(test)
+        test_edges = test.pyg_graph().edge_index.t()
+
+        test_edge_list = [test_edges.clone().apply_(
+            lambda x: dict[x]) for dict in dict_indices]
+        if len(test_edge_list) == 0:
+            num_node_features = self.graph.num_node_features
+            return torch.zeros(num_node_features)
+
+        test_edge_tensor = torch.stack(test_edge_list)
+        x_edge_pair = self.graph.x[test_edge_tensor]
+
+        x_edge_product = torch.prod(x_edge_pair, dim=-2)
+        test_agg = torch.sum(x_edge_product, dim=-2)
+        node_contribution = torch.div(torch.sum(test_agg, dim=0), 2)
+
+        test_edge_list = list(map(lambda x: x.tolist(), test_edge_list))
+
+        test_edge_index = [list(map(lambda x: edge_dict[to_str(x)], edge_list))
+                           for edge_list in test_edge_list]
+
+        edge_features = torch.stack(
+            [self.graph.edge_attr[edge] for edge in test_edge_index])
+
+        edge_contribution = torch.unsqueeze(torch.sum(edge_features), 0)
+
+        #print('edge_contribution = ', test_agg.size())
+        return torch.cat((node_contribution, edge_contribution), dim=-1)
+
+    def lagrangian_edge_encoder(self, format='Torch'):
+        '''
+        An encdoer with local augmentation given by lagrangian functions:
+        $ \sum_{f\in hom(F, self.graph)} \oplus_{k = 1..d}\sum_{(i,j)\in E(F)} x^k_(f(i))x^k_(f(j)) $
+        for F in testgraphset and d the dimension of node features
+        '''
+        return self.__encoder(self.__lagrangian_edge_agg, format=format)
+
+    def __tensor_v_agg(self, test: testGraph):
+        '''
+        Calculats the index tensor for the tensor vertex encoding
+        '''
+        dict_indices = list(map(lambda x: x.values(), self.subIso(test)))
+        d = self.graph.num_node_features
+        if len(dict_indices) == 0:
+            return torch.zeros(d)
+        indices = map(lambda x: list(x), dict_indices)
+
+        test_num_nodes = test.num_nodes()
+        d_inx = torch.arange(d)
+        indx_tensor = torch.combinations(
+            d_inx, r=test_num_nodes, with_replacement=True).t().tolist()
+        array_list = (list(zip(e, indx_tensor)) for e in indices)
+
+        # cast self.graph.x
+        def embedding_pretensor(array): return torch.stack(
+            [self.graph.x[i] for i in array])
+
+        pre_tensorlist = [embedding_pretensor(
+            array) for array in array_list]
+
+        # if len(pre_tensorlist) == 0:
+        #   num_node_features = self.graph.num_node_features
+        #  return torch.zeros(num_node_features)
+
+        test_agg = torch.prod(torch.stack(pre_tensorlist, dim=0), dim=1)
+
+        # return torch.zeros(d)
+        return torch.sum(test_agg, dim=0).contiguous()
+
+    def tensor_v_encoder(self, format='Torch'):
+        '''
+        An generalized encoder for incorporating node and subgraph features.
+        returns: a concatanated tensor (or ndarray) multiplying coordinate functions of node featurs
+        $ \sum_{f\in hom(F, self.graph)} Sym(1 \oplus \otimes_{i\in V(F)} x^k_(f(i))) $
+        for F in testgraphset and d the dimension of node features
+
+        The formula inspired by the definition of Lovasz
+        '''
+        return self.__encoder(self.__tensor_v_agg, format=format, flatten=False)
+
+    def tensor_v_encoding_fast(self, format='Torch'):
         pass

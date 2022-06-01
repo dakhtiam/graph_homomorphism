@@ -33,6 +33,12 @@ class TestclassgrandEmbedding(TestclassEmbedding):
             [[1, 0], [1, 1], [1, 0], [1, 1], [1, 0]])
         self.gembed = encoding.grandEmbedding(self.graph)
 
+        self.sm_graph = uts.from_networkx(nx.complete_graph(3))
+        self.sm_graph.x = torch.tensor(
+            [[1, 1, 0, 0], [1, 0, 1, 0], [1, 0, 0, 1]])
+        self.sm_graph.edge_attr = torch.tensor([[1], [2], [1], [3], [2], [3]])
+        self.sm_gembed = encoding.grandEmbedding(self.sm_graph)
+
     def test_init(self):
         self.assertEqual(self.gembed.nx_graph().edges, self.g.edges)
         self.assertEqual(self.graph.num_node_features, 2)
@@ -124,6 +130,31 @@ class TestclassgrandEmbedding(TestclassEmbedding):
         self.assertTrue(np.array_equal(
             np.array([20, 2]), expected_t), msg=f'{expected_t}')
         self.gembed.clear_all_testgraphs()
+
+    def test_tensor_v_encoder(self):
+        self.sm_gembed.clear_all_testgraphs()
+        edge = encoding.testGraph(nx.complete_graph(2), graph_name='edge')
+        self.sm_gembed.add(edge)
+        embedding_list = self.sm_gembed.tensor_v_encoder()
+        embedding_sizes = list(
+            map(lambda x: list(x.size()), embedding_list))
+        self.assertListEqual([[10]], embedding_sizes)
+        self.sm_gembed.clear_all_testgraphs()
+
+        self.sm_gembed.add_single_vertex()
+        self.sm_gembed.add(edge)
+        embedding_list = self.sm_gembed.tensor_v_encoder()
+        embedding_sizes = list(
+            map(lambda x: list(x.size()), embedding_list))
+        #self.assertEqual(14, sum(embedding_sizes))
+        self.sm_gembed.clear_all_testgraphs()
+
+    def test_lagrangian_edge_encoder(self):
+        self.sm_gembed.clear_all_testgraphs()
+        edge = encoding.testGraph(nx.complete_graph(2), graph_name='edge')
+        self.sm_gembed.add(edge)
+        encoded_vector = self.sm_gembed.lagrangian_edge_encoder(format='numpy')
+        self.assertEqual(5, encoded_vector.shape[0])
 
 
 if __name__ == "__main__":

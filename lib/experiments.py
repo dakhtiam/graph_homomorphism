@@ -6,7 +6,8 @@ from optparse import Option
 import string
 from tokenize import String
 import numpy as np
-# import torch
+import torch
+from ogb.graphproppred import Evaluator
 # from torch_geometric.data import Data
 # from torch_geometric.transforms import BaseTransform
 # from torch_geometric.datasets import TUDataset, ZINC
@@ -91,6 +92,7 @@ class ExperimentScore:
 
 @dataclass
 class EncodingData:
+    dataset_name: str
     X: np.ndarray
     y: np.ndarray
     nums: Dict[str, int]
@@ -106,6 +108,8 @@ class EncodingData:
 
     def calculate_single_split_score(self, clf_name, scoring='accuracy',
                                      random_state=42, test_size=0.25):
+        # if self.dataset_name == 'ogbg-molhiv':
+        #    return self.__calculate_molhiv_scores(clf_name)
         # test-train split:
         X_train, X_test, y_train, y_test = train_test_split(
             self.X, self.y, test_size=test_size, random_state=random_state)
@@ -128,6 +132,10 @@ class EncodingData:
             clf, self.X, self.y.ravel(), cv=cv_num, scoring=scoring)
 
         return ExperimentScore(scores=scores, nums=self.nums, clf_name=clf_name, cv_num=cv_num)
+
+    def __calculate_molhiv_scores(self, clf_name):
+        evaluator = Evaluator(name='ogbg-molhiv')
+        pass
 
 ######### experiment pipelines #######
 
@@ -214,7 +222,7 @@ class patternExperiment():
                         self.encoder_name+'/' + f'{i}_y.npy')
             nums = np.load(self.folder_name + '/'+self.encoder_name +
                            '/' + f'{i}_nums.npy', allow_pickle=True).item()
-            result = EncodingData(X, y, nums)
+            result = EncodingData(self.dataset_name, X, y, nums)
             self.__datadict[i] = result
 
         if get_value == True:
