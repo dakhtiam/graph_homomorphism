@@ -250,7 +250,7 @@ class grandEmbedding(Embedding):
         else:
             raise NotImplementedError("Format not supported")
 
-    def __encoder(self, agg, format='Torch', flatten=True):
+    def _encoder(self, agg, format='Torch', flatten=True):
         if self.graph.num_node_features == 0:
             return self.num_encoder(format=format)
 
@@ -272,7 +272,7 @@ class grandEmbedding(Embedding):
         else:
             raise NotImplementedError("Format not supperted")
 
-    def __ghc_agg(self, test):
+    def _ghc_agg(self, test):
         '''
         The local aggregation function for ghc_encoder
         '''
@@ -296,14 +296,14 @@ class grandEmbedding(Embedding):
         $ \sum_{f\in hom(F, self.graph)} \oplus_{k=1..d}\prod_{i\in V(F)} x^k_(f(i)) $
         for F in testgraphset and d the dimension of node features
         '''
-        return self.__encoder(self.__ghc_agg, format=format)
+        return self._encoder(self._ghc_agg, format=format)
 
-    def __lagrangian_agg(self, test: testGraph):
+    def _lagrangian_agg(self, test: testGraph):
         '''
         Local aggregation for Lagrangian encoder
         '''
         if test.name == 'single_vertex':
-            return self.__ghc_agg(test)
+            return self._ghc_agg(test)
         dict_indices = self.subIso(test)
         test_edges = test.pyg_graph().edge_index.t()
 
@@ -327,53 +327,4 @@ class grandEmbedding(Embedding):
         $ \sum_{f\in hom(F, self.graph)} \oplus_{k = 1..d}\sum_{(i,j)\in E(F)} x^k_(f(i))x^k_(f(j)) $
         for F in testgraphset and d the dimension of node features
         '''
-        return self.__encoder(self.__lagrangian_agg, format=format)
-
-    def __lagrangian_edge_agg(self, test):
-        '''
-        Local aggregation for Lagrangian encoder
-        '''
-        if test.name == 'single_vertex':
-            return self.__ghc_agg(test)
-
-        def to_str(x): return f'{x}'
-        edge_strings = map(to_str, self.graph.edge_index.t().tolist())
-        edge_dict = dict(map(lambda x: reversed(x), enumerate(edge_strings)))
-        if test.name == 'single_vertex':
-            return self.__ghc_agg(test)
-        dict_indices = self.subIso(test)
-        test_edges = test.pyg_graph().edge_index.t()
-
-        test_edge_list = [test_edges.clone().apply_(
-            lambda x: dict[x]) for dict in dict_indices]
-        if len(test_edge_list) == 0:
-            num_node_features = self.graph.num_node_features
-            return torch.zeros(num_node_features)
-
-        test_edge_tensor = torch.stack(test_edge_list)
-        x_edge_pair = self.graph.x[test_edge_tensor]
-
-        x_edge_product = torch.prod(x_edge_pair, dim=-2)
-        test_agg = torch.sum(x_edge_product, dim=-2)
-        node_contribution = torch.div(torch.sum(test_agg, dim=0), 2)
-
-        test_edge_list = list(map(lambda x: x.tolist(), test_edge_list))
-
-        test_edge_index = [list(map(lambda x: edge_dict[to_str(x)], edge_list))
-                           for edge_list in test_edge_list]
-
-        edge_features = torch.stack(
-            [self.graph.edge_attr[edge] for edge in test_edge_index])
-
-        edge_contribution = torch.unsqueeze(torch.sum(edge_features), 0)
-
-        #print('edge_contribution = ', test_agg.size())
-        return torch.cat((node_contribution, edge_contribution), dim=-1)
-
-    def lagrangian_edge_encoder(self, format='Torch'):
-        '''
-        An encdoer with local augmentation given by lagrangian functions:
-        $ \sum_{f\in hom(F, self.graph)} \oplus_{k = 1..d}\sum_{(i,j)\in E(F)} x^k_(f(i))x^k_(f(j)) $
-        for F in testgraphset and d the dimension of node features
-        '''
-        return self.__encoder(self.__lagrangian_edge_agg, format=format)
+        return self._encoder(self._lagrangian_agg, format=format)

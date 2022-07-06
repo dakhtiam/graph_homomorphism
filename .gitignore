@@ -19,4 +19,5 @@ old_notebooks/
 # ignore private notebooks
 #pattern_graph_experiment.ipynb
 #project_experiments.ipynb
+newdata/
 
